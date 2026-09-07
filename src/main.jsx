@@ -79,7 +79,7 @@ function App() {
     setBills([])
     setCustomerLoading(true)
     setDataError('')
-    getCustomerData(session.user.id).then(data => {
+    getCustomerData(session.user.id).then(async data => {
       setVehicles(data.vehicles)
       setBookings(data.bookings)
       setBills(data.bills)
