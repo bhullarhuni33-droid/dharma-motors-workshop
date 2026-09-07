@@ -2,7 +2,7 @@ import React, { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   ArrowRight, BatteryCharging, Bell, CalendarDays, CarFront, Check, ChevronRight, CircleDollarSign,
-  Clock3, Download, Gift, LayoutDashboard, LogOut, Menu, MessageCircle, MoreHorizontal,
+  Clock3, Database, Download, Gift, LayoutDashboard, LogOut, Menu, MessageCircle, MoreHorizontal,
   Plus, ReceiptText, Settings2, ShieldCheck, Sparkles, Ticket, UserRound, Users, Wrench, X, Zap
 } from 'lucide-react'
 import { claimReward, createBatteryRequest, createBill, createBooking, createReward, createTimeSlot, createVehicle, createWalkinRequest, getAdminData, getCustomerData, getProfile, markBillPaid, normalizePhone, signInWithPhone, signUpWithPhone, supabase, updateBookingStatus, updateJobStatus, updateTimeSlot, updateWorkshopStatus } from './lib/supabase'
@@ -36,10 +36,10 @@ function App() {
   const [adminView, setAdminView] = useState('overview')
   const [mobileNav, setMobileNav] = useState(false)
   const [toast, setToast] = useState('')
-  const [bookings, setBookings] = useState(initialBookings)
-  const [jobs, setJobs] = useState(initialJobs)
-  const [bills, setBills] = useState(initialBills)
-  const [points, setPoints] = useState(1240)
+  const [bookings, setBookings] = useState([])
+  const [jobs, setJobs] = useState([])
+  const [bills, setBills] = useState([])
+  const [points, setPoints] = useState(0)
   const [showBooking, setShowBooking] = useState(false)
   const [showVehicle, setShowVehicle] = useState(false)
   const [showBattery, setShowBattery] = useState(false)
@@ -54,6 +54,7 @@ function App() {
   const [customers, setCustomers] = useState([])
   const [rewards, setRewards] = useState([])
   const [rewardClaims, setRewardClaims] = useState([])
+  const [dataError, setDataError] = useState('')
 
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const customerNav = [{ key: 'overview', label: 'Overview', icon: LayoutDashboard }, { key: 'bookings', label: 'My bookings', icon: CalendarDays }, { key: 'bills', label: 'My bills', icon: ReceiptText }, { key: 'rewards', label: 'Rewards', icon: Gift }, { key: 'refer', label: 'Refer & earn', icon: Users }]
@@ -69,6 +70,7 @@ function App() {
     setBookings([])
     setBills([])
     setCustomerLoading(true)
+    setDataError('')
     getCustomerData(session.user.id).then(data => {
       setVehicles(data.vehicles)
       setBookings(data.bookings)
@@ -77,13 +79,14 @@ function App() {
       setAppointmentsOpen(data.appointmentsOpen)
       setRewards(data.rewards)
       setCustomerLoading(false)
-    }).catch(error => { notify(error.message); setCustomerLoading(false) })
+    }).catch(error => { setDataError(error.message); setCustomerLoading(false) })
     return undefined
   }, [session, mode])
 
   React.useEffect(() => {
     if (!session || mode !== 'admin') return undefined
     setAdminLoading(true)
+    setDataError('')
     getAdminData().then(data => {
       setBookings(data.bookings.map(booking => ({ id: booking.id, customer: booking.profiles?.full_name || 'Customer', initials: (booking.profiles?.full_name || 'CU').split(' ').map(part => part[0]).join('').slice(0, 2), vehicle: booking.vehicles?.model_name || 'Vehicle', issue: booking.problem, date: `${new Date(booking.appointment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · ${booking.time_slots?.label || ''}`, status: booking.status[0].toUpperCase() + booking.status.slice(1), tone: 'blue' })))
       setJobs(data.jobs.map(job => ({ id: job.id, customerId: job.customer_id, customer: job.profiles?.full_name || 'Customer', vehicle: job.vehicles?.model_name || 'Vehicle', issue: job.problem, status: job.status[0].toUpperCase() + job.status.slice(1), time: new Date(job.created_at).toLocaleDateString('en-IN') })))
@@ -93,7 +96,7 @@ function App() {
       setRewardClaims(data.claims)
       setAppointmentsOpen(data.appointmentsOpen)
       setAdminLoading(false)
-    }).catch(error => { notify(error.message); setAdminLoading(false) })
+    }).catch(error => { setDataError(error.message); setAdminLoading(false) })
     return undefined
   }, [session, mode])
 
@@ -161,7 +164,7 @@ function App() {
     {mobileNav && <div className="scrim" onClick={() => setMobileNav(false)} />}
     <main className="main-content">
       <header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumbs"><span>{mode === 'customer' ? 'Customer portal' : 'Admin dashboard'}</span><ChevronRight size={14} /><strong>{nav.find(item => item.key === view)?.label}</strong></div><div className="topbar-actions"><button className="icon-button notification"><Bell size={18} /><i /></button><div className="user-chip"><span className="avatar avatar-dark">{(profile.full_name || 'DM').split(' ').map(part => part[0]).join('').slice(0, 2)}</span><span>{profile.full_name}</span></div><button className="icon-button" onClick={async () => { await supabase?.auth.signOut(); setSession(null); setProfile(null) }}><LogOut size={17} /></button></div></header>
-      <div className="page-wrap">{mode === 'customer' ? <CustomerView view={view} profile={profile} points={profile.points ?? 0} rewards={rewards} vehicles={vehicles} bookings={bookings} bills={bills} loading={customerLoading} appointmentsOpen={appointmentsOpen} setView={setView} onBook={() => appointmentsOpen && setShowBooking(true)} onVehicle={() => setShowVehicle(true)} onBattery={() => setShowBattery(true)} onClaim={handleClaim} notify={notify} /> : <AdminView view={view} bookings={bookings} jobs={jobs} bills={bills} customers={customers} rewards={rewards} rewardClaims={rewardClaims} appointmentsOpen={appointmentsOpen} onToggleAppointments={toggleAppointments} setView={setView} onBill={() => setShowBill(true)} onReward={() => setShowReward(true)} onSlot={() => setShowSlot(true)} onWalkin={() => setAdminView('walkin')} onPaid={markPaid} onJob={updateJob} onAppointment={updateAppointment} notify={notify} />}</div>
+      <div className="page-wrap">{dataError ? <DatabaseSetupState error={dataError} onRetry={() => setSession({ ...session })} /> : mode === 'customer' ? <CustomerView view={view} profile={profile} points={profile.points ?? 0} rewards={rewards} vehicles={vehicles} bookings={bookings} bills={bills} loading={customerLoading} appointmentsOpen={appointmentsOpen} setView={setView} onBook={() => appointmentsOpen && setShowBooking(true)} onVehicle={() => setShowVehicle(true)} onBattery={() => setShowBattery(true)} onClaim={handleClaim} notify={notify} /> : <AdminView view={view} bookings={bookings} jobs={jobs} bills={bills} customers={customers} rewards={rewards} rewardClaims={rewardClaims} appointmentsOpen={appointmentsOpen} onToggleAppointments={toggleAppointments} setView={setView} onBill={() => setShowBill(true)} onReward={() => setShowReward(true)} onSlot={() => setShowSlot(true)} onWalkin={() => setAdminView('walkin')} onPaid={markPaid} onJob={updateJob} onAppointment={updateAppointment} notify={notify} />}</div>
     </main>
     {showBooking && <Modal title="Book an appointment" onClose={() => setShowBooking(false)}><form onSubmit={addBooking}><Field label="Select vehicle"><select name="vehicleId" required>{vehicles.length ? vehicles.map(vehicle => <option value={vehicle.id} key={vehicle.id}>{vehicle.model_name} · {vehicle.fuel}</option>) : <option value="">Add a vehicle first</option>}</select></Field><Field label="What needs attention?"><input name="problem" placeholder="e.g. Headlights flickering" required /></Field><div className="form-grid"><Field label="Preferred date"><input name="date" type="date" min={new Date().toISOString().slice(0, 10)} required /></Field><Field label="Time slot"><select name="slotId" required><option value="">Choose a slot</option>{availableSlots.map(slot => <option value={slot.id} key={slot.id}>{slot.label}</option>)}</select></Field></div><FormActions onCancel={() => setShowBooking(false)} submit="Request appointment" /></form></Modal>}
     {showVehicle && <Modal title="Add a vehicle" onClose={() => setShowVehicle(false)}><form onSubmit={addVehicle}><Field label="Model name"><input name="modelName" placeholder="e.g. Hyundai Creta" required /></Field><div className="form-grid"><Field label="Vehicle type"><select name="type"><option value="car">Car</option><option value="suv">SUV</option><option value="truck">Truck</option></select></Field><Field label="Fuel"><select name="fuel"><option value="petrol">Petrol</option><option value="diesel">Diesel</option></select></Field></div><FormActions onCancel={() => setShowVehicle(false)} submit="Add vehicle" /></form></Modal>}
@@ -249,6 +252,7 @@ function RewardsPage({ points, rewards = [], claims = [], notify, admin, onRewar
 function ReferPage({ code, notify }) { const referralCode = code || 'Loading...'; return <><PageHeader eyebrow="Bring your people" title="Refer & earn" subtitle="Share your code. You earn 200 points and your friend earns 100 points after their first ₹500+ paid service." /><section className="referral-card"><div className="referral-copy"><span className="eyebrow light">YOUR REFERRAL CODE</span><strong>{referralCode}</strong><p>Your friend enters this code while creating their account. The bonus is automatic after their first qualifying payment.</p><button className="button button-light" onClick={() => { navigator.clipboard?.writeText(referralCode); notify('Referral code copied') }}>Copy code <Ticket size={16} /></button></div><div className="referral-art"><Users size={82} /></div></section><div className="referral-steps"><div><span>01</span><strong>Share your code</strong><p>Send your personal code to a friend.</p></div><div><span>02</span><strong>They register</strong><p>They enter it during signup.</p></div><div><span>03</span><strong>You both earn</strong><p>Points arrive after a ₹500+ paid bill.</p></div></div></> }
 function SlotsPage({ notify, onSlot }) { const [enabled, setEnabled] = useState([true, true, true, true, false]); return <><PageHeader eyebrow="Capacity planning" title="Time slots" subtitle="Shape the day around the work your team can do." action="Add time slot" onAction={onSlot} /><Panel title="Active booking windows"><div className="slot-list">{slots.map((slot, index) => <div className="slot-row" key={slot}><Clock3 size={17} /><strong>{slot}</strong><span>Max bookings <b>{index === 3 ? 2 : 1}</b></span><button className={`toggle ${enabled[index] ? 'on' : ''}`} onClick={() => { const next = !enabled[index]; setEnabled(enabled.map((value, itemIndex) => itemIndex === index ? next : value)); notify(`Time slot ${next ? 'enabled' : 'disabled'} locally`) }}><i /></button><button className="icon-button"><MoreHorizontal size={17} /></button></div>)}</div></Panel></> }
 function EmptyState({ text }) { return <div className="empty-state">{text}</div> }
+function DatabaseSetupState({ error, onRetry }) { return <section className="setup-state"><Database size={28} /><h2>Finish Supabase setup</h2><p>The app could not load your saved workshop data. Run <strong>supabase/operations_migration.sql</strong> in Supabase SQL Editor, then refresh.</p><code>{error}</code><button className="button button-primary" onClick={onRetry}>Try again</button></section> }
 function WalkinPage({ notify, onCreate }) { return <><PageHeader eyebrow="Front desk" title="Walk-in customer" subtitle="Save the intake first, then turn it into a customer profile and job." /><div className="walkin-layout"><Panel title="Customer details"><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); onCreate({ full_name: form.get('name'), phone: form.get('phone'), vehicle_model: form.get('model'), vehicle_type: form.get('type'), fuel: form.get('fuel'), notes: form.get('notes') }) }}><Field label="Full name"><input name="name" placeholder="Customer name" required /></Field><Field label="Mobile number"><input name="phone" inputMode="tel" placeholder="10-digit mobile number" required /></Field><div className="form-divider" /><h4>Vehicle details</h4><Field label="Model name"><input name="model" placeholder="e.g. Tata Nexon" required /></Field><div className="form-grid"><Field label="Type"><select name="type"><option value="car">Car</option><option value="suv">SUV</option><option value="truck">Truck</option></select></Field><Field label="Fuel"><select name="fuel"><option value="petrol">Petrol</option><option value="diesel">Diesel</option></select></Field></div><Field label="Notes (optional)"><textarea name="notes" placeholder="Problem reported by customer" /></Field><button className="button button-primary full-button" type="submit">Save walk-in intake <ArrowRight size={16} /></button></form></Panel><div className="walkin-note"><Zap size={20} /><h3>Fast lane for the front desk</h3><p>This saves the walk-in request in Supabase. Create the Auth profile later if the customer wants portal access.</p></div></div></> }
 function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label> }
 function FormActions({ onCancel, submit }) { return <div className="form-actions"><button className="button button-quiet" type="button" onClick={onCancel}>Cancel</button><button className="button button-primary" type="submit">{submit} <ArrowRight size={16} /></button></div> }

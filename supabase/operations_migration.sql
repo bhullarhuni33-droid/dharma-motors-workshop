@@ -1,6 +1,21 @@
 -- Run this once for an existing Dharma Motors Supabase database.
 -- It fixes completed-job billing, appointment availability, and reward claim tracking.
 
+create table if not exists public.walkin_requests (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  phone text not null,
+  vehicle_model text not null,
+  vehicle_type public.vehicle_type not null,
+  fuel public.fuel_type not null,
+  notes text,
+  status text not null default 'new',
+  created_at timestamptz not null default now()
+);
+alter table public.walkin_requests enable row level security;
+drop policy if exists "admins manage walkin requests" on public.walkin_requests;
+create policy "admins manage walkin requests" on public.walkin_requests for all using (public.is_admin()) with check (public.is_admin());
+
 create table if not exists public.workshop_settings (
   id boolean primary key default true check (id = true),
   appointments_open boolean not null default true,
@@ -68,3 +83,5 @@ end;
 $$;
 drop trigger if exists on_reward_claim on public.reward_claims;
 create trigger on_reward_claim before insert on public.reward_claims for each row execute procedure public.process_reward_claim();
+
+notify pgrst, 'reload schema';
