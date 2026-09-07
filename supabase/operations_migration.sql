@@ -51,6 +51,12 @@ set status = b.status
 from public.bookings b
 where j.booking_id = b.id;
 
+insert into public.jobs (booking_id, customer_id, vehicle_id, problem, status)
+select b.id, b.customer_id, b.vehicle_id, b.problem, b.status
+from public.bookings b
+where b.status in ('confirmed', 'arrived', 'completed')
+  and not exists (select 1 from public.jobs j where j.booking_id = b.id);
+
 create table if not exists public.reward_claims (
   id uuid primary key default gen_random_uuid(),
   reward_id uuid not null references public.rewards(id),
