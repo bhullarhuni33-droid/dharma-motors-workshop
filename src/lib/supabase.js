@@ -97,8 +97,8 @@ export async function createBatteryRequest(customerId, request) {
 
 export async function getAdminData() {
   const [bookings, jobs, bills, customers, rewards, slots, workshop, claims] = await Promise.all([
-    supabase.from('bookings').select('id, appointment_date, problem, status, profiles(full_name), vehicles(model_name), time_slots(label)').order('appointment_date', { ascending: true }),
-    supabase.from('jobs').select('id, customer_id, problem, status, profiles(full_name), vehicles(model_name), created_at').order('created_at', { ascending: false }),
+    supabase.from('bookings').select('id, appointment_date, problem, status, profiles(full_name, phone), vehicles(model_name), time_slots(label)').order('appointment_date', { ascending: true }),
+    supabase.from('jobs').select('id, booking_id, customer_id, problem, status, profiles(full_name, phone, referred_by), vehicles(model_name), created_at').order('created_at', { ascending: false }),
     supabase.from('bills').select('id, customer_id, work_done, total, status, created_at, profiles(full_name)').order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, phone, points, created_at').eq('role', 'customer').order('created_at', { ascending: false }),
     supabase.from('rewards').select('id, name, description, points_required, enabled').order('points_required'),
