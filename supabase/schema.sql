@@ -109,6 +109,23 @@ create table public.walkin_requests (
   created_at timestamptz not null default now()
 );
 
+create table public.workshop_settings (
+  id boolean primary key default true check (id = true),
+  appointments_open boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.workshop_settings (id) values (true) on conflict (id) do nothing;
+
+create table public.reward_claims (
+  id uuid primary key default gen_random_uuid(),
+  reward_id uuid not null references public.rewards(id),
+  customer_id uuid not null references public.profiles(id) on delete cascade,
+  points_spent integer not null,
+  status text not null default 'claimed' check (status in ('claimed', 'fulfilled', 'cancelled')),
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.is_admin()
 returns boolean language sql stable security definer set search_path = public
 as $$ select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') $$;
@@ -123,6 +140,8 @@ alter table public.rewards enable row level security;
 alter table public.battery_requests enable row level security;
 alter table public.walkin_requests enable row level security;
 alter table public.referral_bonus_events enable row level security;
+alter table public.workshop_settings enable row level security;
+alter table public.reward_claims enable row level security;
 
 create policy "customers read own profile" on public.profiles for select using (id = auth.uid() or public.is_admin());
 create policy "customers create own profile" on public.profiles for insert with check (id = auth.uid() and role = 'customer');
@@ -142,6 +161,38 @@ create policy "admin manage rewards" on public.rewards for all using (public.is_
 create policy "own battery requests" on public.battery_requests for all using (customer_id = auth.uid() or public.is_admin()) with check (customer_id = auth.uid() or public.is_admin());
 create policy "admins manage walkin requests" on public.walkin_requests for all using (public.is_admin()) with check (public.is_admin());
 create policy "admins read referral events" on public.referral_bonus_events for select using (public.is_admin());
+create policy "customers read workshop status" on public.workshop_settings for select using (true);
+create policy "admins manage workshop status" on public.workshop_settings for update using (public.is_admin()) with check (public.is_admin());
+create policy "customers read own reward claims" on public.reward_claims for select using (customer_id = auth.uid() or public.is_admin());
+create policy "customers claim rewards" on public.reward_claims for insert with check (customer_id = auth.uid());
+create policy "admins manage reward claims" on public.reward_claims for update using (public.is_admin()) with check (public.is_admin());
+
+create or replace function public.process_reward_claim()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare
+  required_points integer;
+  current_points integer;
+begin
+  select points_required into required_points from public.rewards where id = new.reward_id and enabled = true;
+  select points into current_points from public.profiles where id = new.customer_id;
+  if required_points is null then raise exception 'Reward is not available'; end if;
+  if current_points < required_points then raise exception 'Not enough reward points'; end if;
+  new.points_spent := required_points;
+  update public.profiles set points = points - required_points where id = new.customer_id;
+  return new;
+end;
+$$;
+
+create trigger on_reward_claim before insert on public.reward_claims
+for each row execute procedure public.process_reward_claim();
+
+create or replace function public.appointments_are_open()
+returns boolean language sql stable security definer set search_path = public
+as $$ select coalesce((select appointments_open from public.workshop_settings where id = true), true) $$;
+
+create policy "customers book only when open" on public.bookings for insert
+with check (customer_id = auth.uid() and public.appointments_are_open());
 
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public
@@ -190,6 +241,20 @@ $$;
 
 create trigger on_booking_confirmed after update of status on public.bookings
 for each row execute procedure public.create_job_for_confirmed_booking();
+
+create or replace function public.sync_job_from_booking()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  update public.jobs
+  set status = new.status
+  where booking_id = new.id;
+  return new;
+end;
+$$;
+
+create trigger on_booking_status_changed after update of status on public.bookings
+for each row execute procedure public.sync_job_from_booking();
 
 create or replace function public.apply_paid_bill_points()
 returns trigger language plpgsql security definer set search_path = public
