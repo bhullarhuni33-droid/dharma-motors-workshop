@@ -16,6 +16,7 @@ create policy "admins manage workshop status" on public.workshop_settings for up
 create or replace function public.appointments_are_open()
 returns boolean language sql stable security definer set search_path = public
 as $$ select coalesce((select appointments_open from public.workshop_settings where id = true), true) $$;
+drop policy if exists "customers create bookings" on public.bookings;
 drop policy if exists "customers book only when open" on public.bookings;
 create policy "customers book only when open" on public.bookings for insert with check (customer_id = auth.uid() and public.appointments_are_open());
 

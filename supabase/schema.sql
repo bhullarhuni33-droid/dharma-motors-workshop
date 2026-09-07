@@ -150,7 +150,6 @@ create policy "own vehicles" on public.vehicles for all using (customer_id = aut
 create policy "read enabled slots" on public.time_slots for select using (enabled or public.is_admin());
 create policy "admin manage slots" on public.time_slots for all using (public.is_admin()) with check (public.is_admin());
 create policy "own bookings" on public.bookings for select using (customer_id = auth.uid() or public.is_admin());
-create policy "customers create bookings" on public.bookings for insert with check (customer_id = auth.uid());
 create policy "admin manage bookings" on public.bookings for update using (public.is_admin()) with check (public.is_admin());
 create policy "admin manage jobs" on public.jobs for all using (public.is_admin()) with check (public.is_admin());
 create policy "customers read own jobs" on public.jobs for select using (customer_id = auth.uid());
