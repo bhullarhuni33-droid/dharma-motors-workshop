@@ -17,6 +17,8 @@ For an existing database, run `supabase/referral_migration.sql` instead of rerun
 
 If the original schema is already installed, add the `walkin_requests` table and its admin policy from the latest `supabase/schema.sql` before using Walk-in.
 
+For an existing live project, run `supabase/operations_migration.sql` and then `supabase/production_fixes.sql`. The second migration creates the standard booking slots if absent and enforces each slot's capacity directly in the database.
+
 Referral rules are enforced in the database: every paid bill adds 10 points per ₹100 to the customer; when a referred customer's paid bill is ₹500 or more, the referrer receives 200 bonus points and the referred customer receives 100 bonus points. A bill can trigger the referral bonus only once.
 
 The admin area is not selected by a client-side toggle. A signed-in account reaches it only when its `profiles.role` is `admin`; all other accounts receive the customer app. Passwords are handled by Supabase and are never stored in the app database or source code.

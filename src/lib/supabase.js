@@ -91,16 +91,12 @@ export async function getAvailableSlots(date) {
   return { data: (available || []).filter(slot => (counts[slot.id] || 0) < slot.max_bookings), error: null }
 }
 
-export async function createBatteryRequest(customerId, request) {
-  return supabase.from('battery_requests').insert({ customer_id: customerId, ...request }).select('id').single()
-}
-
 export async function getAdminData() {
   const [bookings, jobs, bills, customers, rewards, slots, workshop, claims] = await Promise.all([
     supabase.from('bookings').select('id, appointment_date, problem, status, profiles(full_name, phone), vehicles(model_name), time_slots(label)').order('appointment_date', { ascending: true }),
     supabase.from('jobs').select('id, booking_id, customer_id, problem, status, profiles(full_name, phone, referred_by), vehicles(model_name), created_at').order('created_at', { ascending: false }),
     supabase.from('bills').select('id, customer_id, work_done, total, status, created_at, profiles(full_name)').order('created_at', { ascending: false }),
-    supabase.from('profiles').select('id, full_name, phone, points, created_at').eq('role', 'customer').order('created_at', { ascending: false }),
+    supabase.from('profiles').select('id, full_name, phone, points, referred_by, created_at').eq('role', 'customer').order('created_at', { ascending: false }),
     supabase.from('rewards').select('id, name, description, points_required, enabled').order('points_required'),
     supabase.from('time_slots').select('id, label, max_bookings, enabled').order('label'),
     supabase.from('workshop_settings').select('appointments_open').eq('id', true).single(),
@@ -128,7 +124,7 @@ export async function markBillPaid(id) {
 }
 
 export async function updateTimeSlot(id, enabled) {
-  return supabase.from('time_slots').update({ enabled }).eq('id', id)
+  return supabase.from('time_slots').update(typeof enabled === 'object' ? enabled : { enabled }).eq('id', id)
 }
 
 export async function createReward(reward) {
