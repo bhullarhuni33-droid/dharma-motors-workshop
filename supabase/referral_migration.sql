@@ -48,11 +48,12 @@ begin
   if new.status = 'paid' and old.status is distinct from 'paid' then
     service_points := floor(new.total / 100)::integer * 10;
     update public.profiles set points = points + service_points where id = new.customer_id;
-    select referred_by into customer_referrer from public.profiles where id = new.customer_id;
-    if new.total >= 500 and customer_referrer is not null then
+    select referred_by into customer_referrer from public.profiles where id = new.customer_id for update;
+    if new.total >= 500 and customer_referrer is not null and not exists (
+      select 1 from public.referral_bonus_events where referred_customer_id = new.customer_id
+    ) then
       insert into public.referral_bonus_events (bill_id, referrer_id, referred_customer_id)
-      values (new.id, customer_referrer, new.customer_id)
-      on conflict (bill_id) do nothing;
+      values (new.id, customer_referrer, new.customer_id);
       if found then
         update public.profiles set points = points + 200 where id = customer_referrer;
         update public.profiles set points = points + 100 where id = new.customer_id;

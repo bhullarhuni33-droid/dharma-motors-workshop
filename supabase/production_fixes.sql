@@ -86,5 +86,80 @@ create trigger enforce_time_slot_capacity_before_booking
 before insert on public.bookings
 for each row execute procedure public.enforce_time_slot_capacity();
 
--- The app's time-slot editor relies on the existing admin RLS policy.
--- No customer-facing Supabase errors are exposed by the frontend.
+-- Referral rewards: only the first qualifying paid bill of a referred customer
+-- receives the +100 / +200 bonus. Normal service points still apply to all bills.
+create table if not exists public.referral_bonus_events (
+  bill_id uuid primary key references public.bills(id) on delete cascade,
+  referrer_id uuid not null references public.profiles(id),
+  referred_customer_id uuid not null references public.profiles(id),
+  referrer_points integer not null default 200,
+  customer_points integer not null default 100,
+  created_at timestamptz not null default now()
+);
+alter table public.referral_bonus_events enable row level security;
+drop policy if exists "admins read referral events" on public.referral_bonus_events;
+create policy "admins read referral events" on public.referral_bonus_events for select using (public.is_admin());
+
+create or replace function public.apply_paid_bill_points()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare
+  customer_referrer uuid;
+  service_points integer;
+  referral_already_rewarded boolean;
+begin
+  if new.status = 'paid' and old.status is distinct from 'paid' then
+    service_points := floor(new.total / 100)::integer * 10;
+    update public.profiles set points = points + service_points where id = new.customer_id;
+
+    select referred_by into customer_referrer from public.profiles where id = new.customer_id for update;
+    select exists(
+      select 1 from public.referral_bonus_events
+      where referred_customer_id = new.customer_id
+    ) into referral_already_rewarded;
+
+    if new.total >= 500 and customer_referrer is not null and not referral_already_rewarded then
+      insert into public.referral_bonus_events (bill_id, referrer_id, referred_customer_id)
+      values (new.id, customer_referrer, new.customer_id);
+      update public.profiles set points = points + 200 where id = customer_referrer;
+      update public.profiles set points = points + 100 where id = new.customer_id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_bill_paid on public.bills;
+create trigger on_bill_paid after update of status on public.bills
+for each row execute procedure public.apply_paid_bill_points();
+
+-- Ensure referral codes entered at sign-up create the relationship, including
+-- customers created before this trigger was installed.
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, full_name, phone, referral_code, referred_by)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', 'Customer'),
+    coalesce(new.raw_user_meta_data->>'phone', new.phone),
+    upper('DM-' || substr(replace(new.id::text, '-', ''), 1, 8)),
+    (select id from public.profiles where upper(referral_code) = upper(nullif(new.raw_user_meta_data->>'referral_code', '')) and id <> new.id limit 1)
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+for each row execute procedure public.handle_new_user();
+
+update public.profiles customer
+set referred_by = referrer.id
+from auth.users auth_user
+join public.profiles referrer
+  on upper(referrer.referral_code) = upper(nullif(auth_user.raw_user_meta_data->>'referral_code', ''))
+where customer.id = auth_user.id
+  and customer.referred_by is null
+  and referrer.id <> customer.id;
