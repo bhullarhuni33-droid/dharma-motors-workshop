@@ -52,6 +52,7 @@ export async function getCustomerData(userId) {
     vehicles: vehicles.data || [],
     bookings: (bookings.data || []).map(booking => ({
       ...booking,
+      status: booking.status[0].toUpperCase() + booking.status.slice(1),
       customer: 'My appointment',
       initials: 'ME',
       vehicle: booking.vehicles?.model_name || 'Vehicle',
@@ -92,19 +93,21 @@ export async function getAvailableSlots(date) {
 }
 
 export async function getAdminData() {
-  const [bookings, jobs, bills, customers, rewards, slots, workshop, claims] = await Promise.all([
+  const [bookings, jobs, bills, customers, profiles, rewards, slots, workshop, claims] = await Promise.all([
     supabase.from('bookings').select('id, appointment_date, problem, status, profiles(full_name, phone), vehicles(model_name), time_slots(label)').order('appointment_date', { ascending: true }),
     supabase.from('jobs').select('id, booking_id, customer_id, problem, status, profiles(full_name, phone, referred_by), vehicles(model_name), created_at').order('created_at', { ascending: false }),
     supabase.from('bills').select('id, customer_id, work_done, total, status, created_at, profiles(full_name)').order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, phone, points, referred_by, created_at').eq('role', 'customer').order('created_at', { ascending: false }),
+    supabase.from('profiles').select('id, full_name'),
     supabase.from('rewards').select('id, name, description, points_required, enabled').order('points_required'),
     supabase.from('time_slots').select('id, label, max_bookings, enabled').order('label'),
     supabase.from('workshop_settings').select('appointments_open').eq('id', true).single(),
     supabase.from('reward_claims').select('id, status, created_at, profiles(full_name), rewards(name, points_required)').order('created_at', { ascending: false }),
   ])
-  const failed = [bookings, jobs, bills, customers, rewards, slots, workshop, claims].find(result => result.error)
+  const failed = [bookings, jobs, bills, customers, profiles, rewards, slots, workshop, claims].find(result => result.error)
   if (failed) throw failed.error
-  return { bookings: bookings.data || [], jobs: jobs.data || [], bills: bills.data || [], customers: customers.data || [], rewards: rewards.data || [], slots: slots.data || [], appointmentsOpen: workshop.data?.appointments_open ?? true, claims: claims.data || [] }
+  const namesById = new Map((profiles.data || []).map(profile => [profile.id, profile.full_name]))
+  return { bookings: bookings.data || [], jobs: jobs.data || [], bills: bills.data || [], customers: (customers.data || []).map(customer => ({ ...customer, referrer_name: customer.referred_by ? namesById.get(customer.referred_by) || 'Dharma Motors customer' : null })), rewards: rewards.data || [], slots: slots.data || [], appointmentsOpen: workshop.data?.appointments_open ?? true, claims: claims.data || [] }
 }
 
 export async function updateBookingStatus(id, status) {
