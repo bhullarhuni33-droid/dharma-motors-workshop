@@ -81,7 +81,11 @@ function App() {
     setBills([])
     setCustomerLoading(true)
     setDataError('')
-    getCustomerData(session.user.id).then(async data => {
+    let mounted = true
+    const refreshCustomerData = async () => {
+      try {
+        const data = await getCustomerData(session.user.id)
+        if (!mounted) return
       setVehicles(data.vehicles)
       setBookings(data.bookings)
       setBills(data.bills)
@@ -91,8 +95,19 @@ function App() {
       const { data: freshProfile } = await getProfile(session.user.id)
       if (freshProfile) setProfile(freshProfile)
       setCustomerLoading(false)
-    }).catch(error => { setDataError(error.message); setCustomerLoading(false) })
-    return undefined
+      } catch (error) {
+        if (mounted) { setDataError(error.message); setCustomerLoading(false) }
+      }
+    }
+    refreshCustomerData()
+    const channel = supabase?.channel(`customer-bookings-${session.user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `customer_id=eq.${session.user.id}` }, refreshCustomerData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bills', filter: `customer_id=eq.${session.user.id}` }, refreshCustomerData)
+      .subscribe()
+    const interval = window.setInterval(refreshCustomerData, 30000)
+    const onFocus = () => refreshCustomerData()
+    window.addEventListener('focus', onFocus)
+    return () => { mounted = false; window.clearInterval(interval); window.removeEventListener('focus', onFocus); if (channel) supabase?.removeChannel(channel) }
   }, [session, mode])
 
   React.useEffect(() => {
@@ -214,7 +229,7 @@ function CustomerView({ view, profile, points, rewards, vehicles, bookings, bill
   if (view === 'rewards') return <RewardsPage points={points} rewards={rewards} notify={notify} onClaim={onClaim} />
   if (view === 'refer') return <ReferPage code={profile.referral_code} notify={notify} />
   const firstName = (profile.full_name || 'Customer').split(' ')[0]
-  const nextBooking = bookings[0]
+  const nextBooking = bookings.find(booking => !['Completed', 'Cancelled'].includes(booking.status)) || bookings[0]
   const nextReward = rewards.find(reward => reward.points_required > points)
   return <><PageHeader eyebrow="Your workshop account" title={`Hello, ${firstName}`} subtitle="Manage your vehicles and workshop visits in one place." action={appointmentsOpen ? 'Book appointment' : null} onAction={onBook} /><section className="hero-strip"><div><span className="eyebrow light">DHARMA MOTORS</span><h2>Electrical care made simple.</h2><p>{appointmentsOpen ? 'Electrical diagnostics & computer scanning, wiring repairs, alternators, starters and batteries.' : 'Appointments are temporarily closed. You can still view your account.'}</p>{appointmentsOpen && <button className="button button-light" onClick={onBook}>Book a service <ArrowRight size={16} /></button>}</div><div className="hero-art"><CarFront size={130} strokeWidth={1} /><Zap className="hero-zap" size={30} fill="currentColor" /></div></section>{nextBooking && <AppointmentProgress booking={nextBooking} />}<section className="customer-highlight-grid"><PointsWallet points={points || 0} nextReward={nextReward} onRewards={() => setView('rewards')} /><Panel title="Quick actions"><div className="quick-grid">{appointmentsOpen && <QuickAction icon={CalendarDays} label="Book service" onClick={onBook} />}<QuickAction icon={CarFront} label="Add vehicle" onClick={onVehicle} /><QuickAction icon={ReceiptText} label="My bills" onClick={() => setView('bills')} /></div></Panel></section><section className="stat-grid customer-stats"><Stat icon={CarFront} label="My vehicles" value={vehicles.length} note="Vehicles in your garage" tone="blue" /><Stat icon={CalendarDays} label="Appointments" value={bookings.length} note="Track each workshop visit" tone="gold" /><Stat icon={Sparkles} label="Reward points" value={(points || 0).toLocaleString()} note="Added after paid bills" tone="green" /></section><section className="contact-section"><div className="contact-section-heading"><span className="eyebrow">CONTACT DHARMA MOTORS</span><h3>Quick help when you need it</h3></div><div className="contact-grid"><article className="contact-card battery-contact"><div className="contact-card-icon"><Zap size={20} /></div><div><strong>Battery home delivery</strong><p>Car, home and inverter batteries delivered to you.</p><a className="contact-link" href="https://wa.me/917696707446?text=Hello%20Dharma%20Motors%2C%20I%20need%20a%20battery.%20It%20is%20for%3A">Order on WhatsApp <ArrowRight size={15} /></a></div></article><article className="contact-card emergency-contact"><div className="contact-card-icon"><PhoneCall size={20} /></div><div><strong>Vehicle not starting?</strong><p>Get urgent help for vehicle electrical problems.</p><div className="contact-actions"><a className="contact-link" href="tel:7837051412">Call emergency</a><a className="contact-link quiet" href="https://wa.me/917837051412?text=Hello%20Dharma%20Motors%2C%20I%20need%20urgent%20vehicle%20electrical%20help.">WhatsApp</a></div></div></article></div></section></>
 }
@@ -243,7 +258,7 @@ function PageHeader({ eyebrow, title, subtitle, action, onAction }) { return <di
 function Stat({ icon: Icon, label, value, note, tone }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19} /></div><div><span>{label}</span><strong>{value}</strong><small>{note}</small></div></div> }
 function Panel({ title, action, onAction, children }) { return <section className="panel"><div className="panel-heading"><h3>{title}</h3>{action && <button className="text-button" onClick={onAction}>{action} <ArrowRight size={14} /></button>}</div>{children}</section> }
 function BookingRow({ booking, admin, notify, onAppointment }) { return <div className="booking-row"><div className={`avatar avatar-${booking.tone}`}>{booking.initials}</div><div className="row-main"><strong>{booking.customer}</strong><span>{booking.vehicle} <i /> {booking.issue}{admin && booking.phone && <> <i /> {booking.phone}</>}</span></div><div className="row-meta"><strong>{booking.date}</strong><span className={`status ${booking.status.toLowerCase()}`}>{booking.status}</span></div>{admin && <div className="row-actions">{booking.status === 'Pending' && <button className="small-button" onClick={() => onAppointment(booking.id, 'Confirmed')}>Confirm</button>}{booking.status === 'Confirmed' && <button className="small-button" onClick={() => onAppointment(booking.id, 'Arrived')}>Arrived</button>}{booking.status === 'Arrived' && <button className="small-button" onClick={() => onAppointment(booking.id, 'Completed')}>Complete</button>}</div>}</div> }
-function AppointmentProgress({ booking }) { const steps = ['Requested', 'Confirmed', 'At workshop', 'Service complete']; const current = { Pending: 0, Confirmed: 1, Arrived: 2, Completed: 3, Cancelled: 0 }[booking.status] ?? 0; return <section className="appointment-progress"><div><span className="eyebrow">CURRENT APPOINTMENT</span><h3>{booking.vehicle}</h3><p>{booking.issue} · {booking.date}</p></div><div className="progress-steps">{steps.map((step, index) => <span className={index <= current ? 'done' : ''} key={step}><i>{index < current ? <Check size={12} /> : index + 1}</i>{step}</span>)}</div></section> }
+function AppointmentProgress({ booking }) { const steps = ['Requested', 'Confirmed', 'At workshop', 'Service complete']; const current = { Pending: 0, Confirmed: 1, Arrived: 2, Completed: 3, Cancelled: 0 }[booking.status] ?? 0; if (booking.status === 'Completed') return <section className="appointment-progress service-complete"><div><span className="eyebrow">SERVICE COMPLETE</span><h3>{booking.vehicle}</h3><p>Your repair is complete. Your bill will appear here once the workshop issues it.</p></div><span className="status completed"><Check size={14} /> Complete</span></section>; if (booking.status === 'Cancelled') return null; return <section className="appointment-progress"><div><span className="eyebrow">CURRENT APPOINTMENT</span><h3>{booking.vehicle}</h3><p>{booking.issue} · {booking.date}</p></div><div className="progress-steps">{steps.map((step, index) => <span className={index <= current ? 'done' : ''} key={step}><i>{index < current ? <Check size={12} /> : index + 1}</i>{step}</span>)}</div></section> }
 function PointsWallet({ points, nextReward, onRewards }) { const remaining = nextReward ? Math.max(0, nextReward.points_required - points) : 0; return <section className="points-wallet"><div><span className="eyebrow">REWARDS WALLET</span><strong>{points.toLocaleString()} <small>points</small></strong><p>{nextReward ? `${remaining.toLocaleString()} points until ${nextReward.name}.` : 'You can claim an available reward.'}</p></div><button className="button button-outline" onClick={onRewards}>View rewards <ArrowRight size={15} /></button></section> }
 function QuickAction({ icon: Icon, label, onClick }) { return <button className="quick-action" onClick={onClick}><span><Icon size={19} /></span><strong>{label}</strong><ArrowRight size={15} /></button> }
 function BillsTable({ bills, compact, onPaid, admin }) { return <div className="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Service</th><th>Amount</th><th>Status</th>{admin && <th />}</tr></thead><tbody>{bills.map(bill => <tr key={bill.id}><td><strong>{bill.id}</strong><small>{bill.date}</small></td><td>{bill.customer}</td><td>{bill.service}</td><td><strong>₹{bill.amount.toLocaleString()}</strong></td><td><span className={`status ${bill.status.toLowerCase()}`}>{bill.status}</span></td>{admin && <td>{bill.status === 'Pending' && <button className="small-button" onClick={() => onPaid(bill.id)}>Mark paid</button>}</td>}</tr>)}</tbody></table></div> }
