@@ -21,6 +21,9 @@ delete from public.rewards;
 
 -- Delete customer Auth users. Their profile rows are deleted automatically.
 -- Admin account(s) remain available to sign into the workshop dashboard.
+-- Important: any referral code belonging to a deleted test customer also
+-- stops existing. After a reset, create a new referrer account and copy its
+-- newly generated code before creating the referred test customer.
 delete from auth.users
 where id in (select id from public.profiles where role = 'customer');
 

@@ -5,7 +5,7 @@ import {
   Clock3, Database, Download, Gift, LayoutDashboard, LogOut, Menu, MessageCircle, MoreHorizontal,
   Plus, ReceiptText, Settings2, ShieldCheck, Sparkles, Ticket, UserRound, Users, Wrench, X, Zap, PhoneCall
 } from 'lucide-react'
-import { claimReward, createBill, createBooking, createReward, createTimeSlot, createVehicle, createWalkinRequest, getAdminData, getAvailableSlots, getCustomerData, getProfile, markBillPaid, normalizePhone, signInWithPhone, signUpWithPhone, supabase, updateBookingStatus, updateJobStatus, updateTimeSlot, updateWorkshopStatus } from './lib/supabase'
+import { claimReward, createBill, createBooking, createReward, createTimeSlot, createVehicle, createWalkinRequest, getAdminData, getAvailableSlots, getCustomerData, getProfile, markBillPaid, normalizePhone, signInWithPhone, signUpWithPhone, supabase, updateBookingStatus, updateJobStatus, updateTimeSlot, updateWorkshopStatus, validateReferralCode } from './lib/supabase'
 import './styles.css'
 
 const initialBookings = [
@@ -200,8 +200,14 @@ function AuthScreen({ onAuthenticated }) {
         setError('Password must be at least 6 characters.')
         return
       }
+      const enteredReferralCode = String(form.get('referralCode') || '')
+      if (registering && enteredReferralCode.trim()) {
+        const referral = await validateReferralCode(enteredReferralCode)
+        if (referral.error) { setError('We could not verify that referral code. Please try again.'); return }
+        if (!referral.valid) { setError('That referral code is not valid. Ask your friend to share their exact code.'); return }
+      }
       const result = registering
-        ? await signUpWithPhone({ name: form.get('name'), phone: form.get('phone'), password, referralCode: form.get('referralCode') })
+        ? await signUpWithPhone({ name: form.get('name'), phone: form.get('phone'), password, referralCode: enteredReferralCode })
         : await signInWithPhone(form.get('phone'), password)
       if (result.error) {
         setError(registering

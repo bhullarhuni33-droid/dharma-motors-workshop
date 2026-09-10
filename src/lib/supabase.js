@@ -26,8 +26,15 @@ export async function signUpWithPhone({ name, phone, password, referralCode }) {
   return supabase.auth.signUp({
     email: authEmailForPhone(phone),
     password,
-    options: { data: { full_name: name, phone: normalizePhone(phone), referral_code: referralCode || null } },
+    options: { data: { full_name: name, phone: normalizePhone(phone), referral_code: referralCode?.trim().toUpperCase() || null } },
   })
+}
+
+export async function validateReferralCode(referralCode) {
+  const code = referralCode?.trim().toUpperCase()
+  if (!code) return { valid: true }
+  const { data, error } = await supabase.rpc('validate_referral_code', { code })
+  return { valid: Boolean(data), error }
 }
 
 export async function getProfile(userId) {

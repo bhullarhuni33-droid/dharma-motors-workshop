@@ -135,17 +135,36 @@ for each row execute procedure public.apply_paid_bill_points();
 
 -- Ensure referral codes entered at sign-up create the relationship, including
 -- customers created before this trigger was installed.
+create or replace function public.validate_referral_code(code text)
+returns boolean language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.profiles where upper(referral_code) = upper(trim(code))) $$;
+
+grant execute on function public.validate_referral_code(text) to anon, authenticated;
+
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public
 as $$
+declare
+  entered_referral_code text;
+  matched_referrer uuid;
 begin
+  entered_referral_code := upper(trim(coalesce(new.raw_user_meta_data->>'referral_code', '')));
+  if entered_referral_code <> '' then
+    select id into matched_referrer
+    from public.profiles
+    where upper(referral_code) = entered_referral_code and id <> new.id
+    limit 1;
+    if matched_referrer is null then
+      raise exception 'Invalid referral code';
+    end if;
+  end if;
   insert into public.profiles (id, full_name, phone, referral_code, referred_by)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', 'Customer'),
     coalesce(new.raw_user_meta_data->>'phone', new.phone),
     upper('DM-' || substr(replace(new.id::text, '-', ''), 1, 8)),
-    (select id from public.profiles where upper(referral_code) = upper(nullif(new.raw_user_meta_data->>'referral_code', '')) and id <> new.id limit 1)
+    matched_referrer
   );
   return new;
 end;
