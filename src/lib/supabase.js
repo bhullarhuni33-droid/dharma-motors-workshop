@@ -44,7 +44,7 @@ export async function getProfile(userId) {
 
 export async function getCustomerData(userId) {
   if (!supabase) throw new Error('Supabase is not configured.')
-  const [vehicles, bookings, bills, rewards, slots, workshop, claims] = await Promise.all([
+  const [vehicles, bookings, bills, rewards, slots, workshop, claims, notifications] = await Promise.all([
     supabase.from('vehicles').select('id, model_name, type, fuel').eq('customer_id', userId).order('created_at', { ascending: false }),
     supabase.from('bookings').select('id, appointment_date, problem, status, vehicles(model_name, type, fuel), time_slots(label)').eq('customer_id', userId).order('appointment_date', { ascending: true }),
     supabase.from('bills').select('id, created_at, work_done, total, status').eq('customer_id', userId).order('created_at', { ascending: false }),
@@ -52,8 +52,9 @@ export async function getCustomerData(userId) {
     supabase.from('time_slots').select('id, label, max_bookings').eq('enabled', true).order('label'),
     supabase.from('workshop_settings').select('appointments_open').eq('id', true).single(),
     supabase.from('reward_claims').select('id, reward_id, status, created_at, rewards(name, points_required)').eq('customer_id', userId).order('created_at', { ascending: false }),
+    supabase.from('notifications').select('id, title, message, type, read_at, created_at').eq('customer_id', userId).order('created_at', { ascending: false }).limit(20),
   ])
-  const failed = [vehicles, bookings, bills, rewards, slots, workshop, claims].find(result => result.error)
+  const failed = [vehicles, bookings, bills, rewards, slots, workshop, claims, notifications].find(result => result.error)
   if (failed) throw failed.error
   return {
     vehicles: vehicles.data || [],
@@ -79,6 +80,7 @@ export async function getCustomerData(userId) {
     slots: slots.data || [],
     appointmentsOpen: workshop.data?.appointments_open ?? true,
     claims: claims.data || [],
+    notifications: notifications.data || [],
   }
 }
 
@@ -157,4 +159,9 @@ export async function updateWorkshopStatus(appointmentsOpen) {
 
 export async function claimReward(customerId, rewardId, pointsSpent) {
   return supabase.from('reward_claims').insert({ customer_id: customerId, reward_id: rewardId, points_spent: pointsSpent }).select('id').single()
+}
+
+export async function markNotificationsRead(notificationIds) {
+  if (!notificationIds.length) return { error: null }
+  return supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', notificationIds).is('read_at', null)
 }

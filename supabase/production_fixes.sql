@@ -88,6 +88,23 @@ for each row execute procedure public.enforce_time_slot_capacity();
 
 -- Referral rewards: only the first qualifying paid bill of a referred customer
 -- receives the +100 / +200 bonus. Normal service points still apply to all bills.
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null,
+  message text not null,
+  type text not null default 'points',
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+alter table public.notifications enable row level security;
+drop policy if exists "customers read own notifications" on public.notifications;
+create policy "customers read own notifications" on public.notifications
+for select using (customer_id = auth.uid() or public.is_admin());
+drop policy if exists "customers update own notifications" on public.notifications;
+create policy "customers update own notifications" on public.notifications
+for update using (customer_id = auth.uid()) with check (customer_id = auth.uid());
+
 create table if not exists public.referral_bonus_events (
   bill_id uuid primary key references public.bills(id) on delete cascade,
   referrer_id uuid not null references public.profiles(id),
@@ -111,6 +128,8 @@ begin
   if new.status = 'paid' and old.status is distinct from 'paid' then
     service_points := floor(new.total / 100)::integer * 10;
     update public.profiles set points = points + service_points where id = new.customer_id;
+    insert into public.notifications (customer_id, title, message, type)
+    values (new.customer_id, 'Service points added', format('Your paid bill earned %s points.', service_points), 'service_points');
 
     select referred_by into customer_referrer from public.profiles where id = new.customer_id for update;
     select exists(
@@ -123,6 +142,9 @@ begin
       values (new.id, customer_referrer, new.customer_id);
       update public.profiles set points = points + 200 where id = customer_referrer;
       update public.profiles set points = points + 100 where id = new.customer_id;
+      insert into public.notifications (customer_id, title, message, type) values
+        (new.customer_id, 'Referral bonus unlocked', 'Your first ₹500+ paid service earned an extra 100 referral points.', 'referral_bonus'),
+        (customer_referrer, 'Referral reward unlocked', 'Your referred customer completed their first ₹500+ paid service. You earned 200 points.', 'referral_bonus');
     end if;
   end if;
   return new;

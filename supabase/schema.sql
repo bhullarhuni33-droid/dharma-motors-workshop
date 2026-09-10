@@ -126,6 +126,16 @@ create table public.reward_claims (
   created_at timestamptz not null default now()
 );
 
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null,
+  message text not null,
+  type text not null default 'points',
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.is_admin()
 returns boolean language sql stable security definer set search_path = public
 as $$ select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') $$;
@@ -142,6 +152,7 @@ alter table public.walkin_requests enable row level security;
 alter table public.referral_bonus_events enable row level security;
 alter table public.workshop_settings enable row level security;
 alter table public.reward_claims enable row level security;
+alter table public.notifications enable row level security;
 
 create policy "customers read own profile" on public.profiles for select using (id = auth.uid() or public.is_admin());
 create policy "customers create own profile" on public.profiles for insert with check (id = auth.uid() and role = 'customer');
@@ -165,6 +176,8 @@ create policy "admins manage workshop status" on public.workshop_settings for up
 create policy "customers read own reward claims" on public.reward_claims for select using (customer_id = auth.uid() or public.is_admin());
 create policy "customers claim rewards" on public.reward_claims for insert with check (customer_id = auth.uid());
 create policy "admins manage reward claims" on public.reward_claims for update using (public.is_admin()) with check (public.is_admin());
+create policy "customers read own notifications" on public.notifications for select using (customer_id = auth.uid() or public.is_admin());
+create policy "customers update own notifications" on public.notifications for update using (customer_id = auth.uid()) with check (customer_id = auth.uid());
 
 create or replace function public.process_reward_claim()
 returns trigger language plpgsql security definer set search_path = public
