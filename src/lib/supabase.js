@@ -26,7 +26,7 @@ export async function signUpWithPhone({ name, phone, password, referralCode }) {
   return supabase.auth.signUp({
     email: authEmailForPhone(phone),
     password,
-    options: { data: { full_name: name, phone: normalizePhone(phone), referral_code: referralCode?.trim().toUpperCase() || null } },
+    options: { data: { full_name: name, phone: normalizePhone(phone), referral_code: referralCode?.replace(/[^a-z0-9]/gi, '').toUpperCase() || null } },
   })
 }
 
