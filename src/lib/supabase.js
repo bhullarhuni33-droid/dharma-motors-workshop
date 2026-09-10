@@ -54,7 +54,9 @@ export async function getCustomerData(userId) {
     supabase.from('reward_claims').select('id, reward_id, status, created_at, rewards(name, points_required)').eq('customer_id', userId).order('created_at', { ascending: false }),
     supabase.from('notifications').select('id, title, message, type, read_at, created_at').eq('customer_id', userId).order('created_at', { ascending: false }).limit(20),
   ])
-  const failed = [vehicles, bookings, bills, rewards, slots, workshop, claims, notifications].find(result => result.error)
+  // Notifications are an enhancement; a pending migration must never block a
+  // customer from accessing their appointments, bills, or rewards.
+  const failed = [vehicles, bookings, bills, rewards, slots, workshop, claims].find(result => result.error)
   if (failed) throw failed.error
   return {
     vehicles: vehicles.data || [],
