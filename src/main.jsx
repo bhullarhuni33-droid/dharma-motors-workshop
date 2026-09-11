@@ -61,6 +61,10 @@ function App() {
   const [dataError, setDataError] = useState('')
   const [notifications, setNotifications] = useState([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [showInstallBar, setShowInstallBar] = useState(false)
+  const [isIosInstall, setIsIosInstall] = useState(false)
+  const [showIosGuide, setShowIosGuide] = useState(false)
 
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const customerNav = [{ key: 'overview', label: 'Overview', icon: LayoutDashboard }, { key: 'bookings', label: 'My bookings', icon: CalendarDays }, { key: 'bills', label: 'My bills', icon: ReceiptText }, { key: 'rewards', label: 'Rewards', icon: Gift }, { key: 'refer', label: 'Refer & earn', icon: Users }]
@@ -69,6 +73,26 @@ function App() {
   const nav = mode === 'customer' ? customerNav : adminNav
   const view = mode === 'customer' ? customerView : adminView
   const setView = mode === 'customer' ? setCustomerView : setAdminView
+
+  React.useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+    const isIos = /iPad|iPhone|iPod/.test(window.navigator.userAgent)
+    const dismissed = window.localStorage.getItem('dharma-install-dismissed') === 'true'
+    if (isStandalone || dismissed) return undefined
+    if (isIos) { setIsIosInstall(true); setShowInstallBar(true) }
+    const onBeforeInstall = event => { event.preventDefault(); setInstallPrompt(event); setShowInstallBar(true) }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+  }, [])
+
+  const dismissInstallBar = () => { window.localStorage.setItem('dharma-install-dismissed', 'true'); setShowInstallBar(false); setShowIosGuide(false) }
+  const installApp = async () => {
+    if (isIosInstall) return setShowIosGuide(!showIosGuide)
+    if (!installPrompt) return
+    installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null); setShowInstallBar(false)
+  }
 
   const refreshAdminData = async () => {
     const data = await getAdminData()
@@ -183,7 +207,7 @@ function App() {
     {mobileNav && <div className="scrim" onClick={() => setMobileNav(false)} />}
     <main className="main-content">
       <header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumbs"><span>{mode === 'customer' ? 'Customer portal' : 'Admin dashboard'}</span><ChevronRight size={14} /><strong>{nav.find(item => item.key === view)?.label}</strong></div><div className="topbar-actions"><div className="notification-wrap"><button className="icon-button notification" aria-label="Notifications" onClick={async () => { const nextOpen = !notificationsOpen; setNotificationsOpen(nextOpen); if (nextOpen) { const unread = notifications.filter(item => !item.read_at).map(item => item.id); await markNotificationsRead(unread); setNotifications(notifications.map(item => ({ ...item, read_at: item.read_at || new Date().toISOString() }))) } }}><Bell size={18} />{mode === 'customer' && notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <NotificationPanel notifications={notifications} />}</div><div className="user-chip"><span className="avatar avatar-dark">{(profile.full_name || 'DM').split(' ').map(part => part[0]).join('').slice(0, 2)}</span><span>{profile.full_name}</span></div><button className="icon-button" onClick={async () => { await supabase?.auth.signOut(); setSession(null); setProfile(null) }}><LogOut size={17} /></button></div></header>
-      <div className="page-wrap">{dataError ? <DatabaseSetupState onRetry={() => setSession({ ...session })} /> : mode === 'customer' ? <CustomerView view={view} profile={profile} points={profile.points ?? 0} rewards={rewards} vehicles={vehicles} bookings={bookings} bills={bills} loading={customerLoading} appointmentsOpen={appointmentsOpen} setView={setView} onBook={() => appointmentsOpen && setShowBooking(true)} onVehicle={() => setShowVehicle(true)} onClaim={handleClaim} notify={notify} /> : <AdminView view={view} bookings={bookings} jobs={jobs} bills={bills} customers={customers} rewards={rewards} rewardClaims={rewardClaims} timeSlots={timeSlots} appointmentsOpen={appointmentsOpen} onToggleAppointments={toggleAppointments} setView={setView} onBill={() => setShowBill(true)} onOpenBill={openBillForJob} onReward={() => setShowReward(true)} onEditReward={setEditingReward} onSlot={() => setShowSlot(true)} onUpdateSlot={updateSlot} onWalkin={() => setAdminView('walkin')} onPaid={markPaid} onJob={updateJob} onAppointment={updateAppointment} notify={notify} />}</div>
+      <div className="page-wrap">{mode === 'customer' && showInstallBar && <InstallBar isIos={isIosInstall} showIosGuide={showIosGuide} onInstall={installApp} onDismiss={dismissInstallBar} />}{dataError ? <DatabaseSetupState onRetry={() => setSession({ ...session })} /> : mode === 'customer' ? <CustomerView view={view} profile={profile} points={profile.points ?? 0} rewards={rewards} vehicles={vehicles} bookings={bookings} bills={bills} loading={customerLoading} appointmentsOpen={appointmentsOpen} setView={setView} onBook={() => appointmentsOpen && setShowBooking(true)} onVehicle={() => setShowVehicle(true)} onClaim={handleClaim} notify={notify} /> : <AdminView view={view} bookings={bookings} jobs={jobs} bills={bills} customers={customers} rewards={rewards} rewardClaims={rewardClaims} timeSlots={timeSlots} appointmentsOpen={appointmentsOpen} onToggleAppointments={toggleAppointments} setView={setView} onBill={() => setShowBill(true)} onOpenBill={openBillForJob} onReward={() => setShowReward(true)} onEditReward={setEditingReward} onSlot={() => setShowSlot(true)} onUpdateSlot={updateSlot} onWalkin={() => setAdminView('walkin')} onPaid={markPaid} onJob={updateJob} onAppointment={updateAppointment} notify={notify} />}</div>
     </main>
     {showBooking && <Modal title="Book an appointment" onClose={() => setShowBooking(false)}><form onSubmit={addBooking}><Field label="Select vehicle"><select name="vehicleId" required>{vehicles.length ? vehicles.map(vehicle => <option value={vehicle.id} key={vehicle.id}>{vehicle.model_name} · {vehicle.fuel}</option>) : <option value="">Add a vehicle first</option>}</select></Field><Field label="What needs attention?"><input name="problem" placeholder="e.g. Headlights flickering" required /></Field><div className="form-grid"><Field label="Preferred date"><input name="date" type="date" min={new Date().toISOString().slice(0, 10)} required onChange={async event => { const result = await getAvailableSlots(event.currentTarget.value); setAvailableSlots(result.data || []); if (result.error) notify('Could not load available time slots.') }} /></Field><Field label="Time slot"><select name="slotId" required disabled={!availableSlots.length}><option value="">{availableSlots.length ? 'Choose a slot' : 'Choose a date first'}</option>{availableSlots.map(slot => <option value={slot.id} key={slot.id}>{slot.label}</option>)}</select></Field></div><FormActions onCancel={() => setShowBooking(false)} submit="Request appointment" /></form></Modal>}
     {showVehicle && <Modal title="Add a vehicle" onClose={() => setShowVehicle(false)}><form onSubmit={addVehicle}><Field label="Model name"><input name="modelName" placeholder="e.g. Hyundai Creta" required /></Field><div className="form-grid"><Field label="Vehicle type"><select name="type"><option value="car">Car</option><option value="suv">SUV</option><option value="truck">Truck</option></select></Field><Field label="Fuel"><select name="fuel"><option value="petrol">Petrol</option><option value="diesel">Diesel</option></select></Field></div><FormActions onCancel={() => setShowVehicle(false)} submit="Add vehicle" /></form></Modal>}
@@ -269,6 +293,7 @@ function LiveAdminDashboard({ bookings, jobs, bills, customers, appointmentsOpen
 }
 
 function PageHeader({ eyebrow, title, subtitle, action, onAction }) { return <div className="page-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{subtitle}</p></div>{action && <button className="button button-primary" onClick={onAction} disabled={!onAction}><Plus size={17} />{action}</button>}</div> }
+function InstallBar({ isIos, showIosGuide, onInstall, onDismiss }) { return <section className="install-bar"><img src="/icons/mechanic-192.png" alt="Dharma Motors mechanic" /><div className="install-copy"><strong>Install Dharma Motors</strong><span>Fast access from your home screen.</span>{showIosGuide && <small>Tap <b>Share</b> in Safari, then choose <b>Add to Home Screen</b>.</small>}</div><button className="install-button" onClick={onInstall}>{isIos ? 'How to install' : 'Install'} <Download size={14} /></button><button className="install-dismiss" aria-label="Dismiss install suggestion" onClick={onDismiss}><X size={16} /></button></section> }
 function AdminRewardsPage({ rewards = [], claims = [], onReward, onEditReward }) { return <><PageHeader eyebrow="Retention engine" title="Rewards" subtitle="Create rewards, manage availability, and verify customer claim codes." action="Create reward" onAction={onReward} /><div className="reward-grid">{rewards.map(reward => <div className="reward-card" key={reward.id}><div className="reward-icon"><Gift size={20} /></div><span className="reward-tag">{reward.enabled ? 'LOYALTY REWARD · LIVE' : 'HIDDEN FROM CUSTOMERS'}</span><h3>{reward.name}</h3><p>{reward.description}</p><div className="reward-footer"><strong><Sparkles size={14} /> {reward.points_required.toLocaleString()} pts</strong><button className="small-button" onClick={() => onEditReward(reward)}>Edit reward</button></div></div>)}{!rewards.length && <EmptyState text="No rewards created yet." />}</div><Panel title="Recent reward claims"><div className="customer-list">{claims.map(claim => <div className="customer-row" key={claim.id}><div className="reward-icon"><Gift size={16} /></div><span><strong>{claim.profiles?.full_name || 'Customer'}</strong><small>{claim.rewards?.name || 'Reward'} · {new Date(claim.created_at).toLocaleDateString('en-IN')} · Claim code: <b>{claim.claim_code || 'Legacy claim'}</b></small></span><span className="customer-spend"><small>{claim.status}</small></span></div>)}{!claims.length && <EmptyState text="No reward claims yet." />}</div></Panel></> }
 function Stat({ icon: Icon, label, value, note, tone }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19} /></div><div><span>{label}</span><strong>{value}</strong><small>{note}</small></div></div> }
 function Panel({ title, action, onAction, children }) { return <section className="panel"><div className="panel-heading"><h3>{title}</h3>{action && <button className="text-button" onClick={onAction}>{action} <ArrowRight size={14} /></button>}</div>{children}</section> }
@@ -295,3 +320,7 @@ function FormActions({ onCancel, submit }) { return <div className="form-actions
 function Modal({ title, onClose, children }) { return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal" onMouseDown={event => event.stopPropagation()}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" onClick={onClose}><X size={18} /></button></div>{children}</div></div> }
 
 createRoot(document.getElementById('root')).render(<StrictMode><App /></StrictMode>)
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}))
+}

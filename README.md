@@ -31,6 +31,10 @@ npm run dev
 npm run build
 ```
 
+## Installable app (PWA)
+
+After deployment over HTTPS, customers can install Dharma Motors from their browser. On Android, use **Install app** or **Add to Home screen**. On iPhone, use Safari's **Share** menu and choose **Add to Home Screen**. The mascot app icons are stored in `public/icons/`.
+
 ## GitHub and Vercel
 
 Push this folder to a GitHub repository. Import that repository into Vercel; the included `vercel.json` uses `npm run build` and publishes `dist`.
