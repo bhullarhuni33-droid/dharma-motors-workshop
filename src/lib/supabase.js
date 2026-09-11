@@ -114,7 +114,7 @@ export async function getAdminData() {
     supabase.from('rewards').select('id, name, description, points_required, enabled').order('points_required'),
     supabase.from('time_slots').select('id, label, max_bookings, enabled').order('label'),
     supabase.from('workshop_settings').select('appointments_open').eq('id', true).single(),
-    supabase.from('reward_claims').select('id, status, created_at, profiles(full_name), rewards(name, points_required)').order('created_at', { ascending: false }),
+    supabase.from('reward_claims').select('id, claim_code, status, created_at, profiles(full_name), rewards(name, points_required)').order('created_at', { ascending: false }),
   ])
   const failed = [bookings, jobs, bills, customers, profiles, referralEvents, rewards, slots, workshop, claims].find(result => result.error)
   if (failed) throw failed.error
@@ -145,6 +145,14 @@ export async function updateTimeSlot(id, enabled) {
 
 export async function createReward(reward) {
   return supabase.from('rewards').insert(reward).select('id, name, description, points_required, enabled').single()
+}
+
+export async function updateReward(id, reward) {
+  return supabase.from('rewards').update(reward).eq('id', id).select('id, name, description, points_required, enabled').single()
+}
+
+export async function deleteReward(id) {
+  return supabase.from('rewards').delete().eq('id', id)
 }
 
 export async function createTimeSlot(slot) {
